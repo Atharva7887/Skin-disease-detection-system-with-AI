@@ -4,6 +4,7 @@
 ![Take a test Screenshot](screenshots/ss2.png)
 
 
+
 Skin Cancer Detection project is a sophisticated web application developed to detect skin cancer utilizing advanced deep learning techniques.
 
 ## Features
@@ -30,5 +31,6 @@ git clone https://github.com/karantolani/skin-cancer-detection.git
 ## Visual Aid
 
 ![High Level Design](screenshots/diagram.png)
+![Working](screenshots/Working.jpg)
 ![Test Results 1](screenshots/ss4.png)
 ![Test Results 2](screenshots/ss3.png)
