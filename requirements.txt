@@ -1,0 +1,14 @@
+# Install PyTorch first (RTX 50-series needs the CUDA 12.8 build):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+# CPU-only: pip install torch torchvision
+torch>=2.7
+torchvision>=0.22
+timm>=1.0
+numpy>=1.26
+pandas>=2.1
+scikit-learn>=1.4
+Pillow>=10.3
+flask>=3.0
+langgraph>=0.2
+anthropic>=0.40   # optional: LLM-written explanations when ANTHROPIC_API_KEY is set
+pytest>=8.0

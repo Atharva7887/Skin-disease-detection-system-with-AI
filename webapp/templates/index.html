@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skin Lesion Analyzer</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1c2230; --muted:#5d6678; --line:#dfe3ea;
+          --accent:#2457d6; --low:#1e7a46; --elevated:#a56a00; --high:#b3261e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12151c; --card:#1b2029; --text:#e8ebf2; --muted:#9aa3b5; --line:#2c3340;
+            --accent:#7aa2ff; --low:#58c98a; --elevated:#e5b04a; --high:#ff8a80; } }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui,sans-serif; }
+  main { max-width:640px; margin:0 auto; padding:24px 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin-top:16px; }
+  .warn { border-left:4px solid var(--elevated); font-size:14px; color:var(--muted); }
+  button { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:10px 18px; font-size:15px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  img#preview { max-width:100%; max-height:280px; border-radius:8px; margin-top:12px; display:none; }
+  .bar { height:8px; background:var(--line); border-radius:4px; overflow:hidden; }
+  .bar > span { display:block; height:100%; background:var(--accent); }
+  .row { display:flex; justify-content:space-between; font-size:14px; margin-top:10px; }
+  .badge { display:inline-block; padding:2px 10px; border-radius:99px; font-size:13px; font-weight:600; border:1px solid currentColor; }
+  .low { color:var(--low); } .elevated { color:var(--elevated); } .high { color:var(--high); }
+  #error { color:var(--high); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Skin Lesion Analyzer</h1>
+  <div class="card warn">{{ disclaimer }}</div>
+
+  <div class="card">
+    {% if not ready %}<p id="error">No trained model is loaded. Train one with <code>train.py</code> and restart.</p>{% endif %}
+    <input type="file" id="file" accept="image/jpeg,image/png,image/webp" {{ '' if ready else 'disabled' }}>
+    <img id="preview" alt="Selected image preview">
+    <p><button id="go" disabled>Analyze</button></p>
+    <p id="error" role="alert"></p>
+  </div>
+
+  <div class="card" id="result" hidden>
+    <span class="badge" id="risk"></span>
+    <p id="explanation"></p>
+    <div id="bars"></div>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+$('file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  $('go').disabled = !f;
+  if (f) { $('preview').src = URL.createObjectURL(f); $('preview').style.display = 'block'; }
+});
+$('go').addEventListener('click', async () => {
+  $('error').textContent = ''; $('result').hidden = true; $('go').disabled = true;
+  const body = new FormData(); body.append('image', $('file').files[0]);
+  try {
+    const r = await fetch('/api/predict', { method: 'POST', body });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Request failed');
+    $('risk').textContent = d.risk + ' risk' + (d.needs_review ? ' · clinician review advised' : '');
+    $('risk').className = 'badge ' + d.risk;
+    $('explanation').textContent = d.explanation;
+    $('bars').replaceChildren(...d.predictions.slice(0, 3).map(p => {
+      const row = document.createElement('div');
+      const pct = (p.probability * 100).toFixed(1);
+      const head = document.createElement('div'); head.className = 'row';
+      head.append(Object.assign(document.createElement('span'), { textContent: p.name }),
+                  Object.assign(document.createElement('span'), { textContent: pct + '%' }));
+      const bar = document.createElement('div'); bar.className = 'bar';
+      const fill = document.createElement('span'); fill.style.width = pct + '%'; bar.append(fill);
+      row.append(head, bar); return row;
+    }));
+    $('result').hidden = false;
+  } catch (err) { $('error').textContent = err.message; }
+  $('go').disabled = false;
+});
+</script>
+</body>
+</html>
