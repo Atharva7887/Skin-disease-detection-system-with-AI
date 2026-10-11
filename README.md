@@ -206,6 +206,12 @@ HAM10000: Tschandl, Rosendahl & Kittler, *Sci Data* 5, 180161 (2018); ISIC 2018 
 both CC BY-NC 4.0 (non-commercial). The four sample images under `webapp/static/samples/` come from the
 ISIC 2018 Task 3 test set and are used under that licence.
 
+## Roadmap
+
+Planned work (conversational symptom intake, higher-resolution retraining, phone-photo and skin-tone
+evaluation, published weights, CI) and the safety principles any future version must keep are in
+[ROADMAP.md](ROADMAP.md).
+
 ## Limitations
 
 HAM10000 is dermoscopic imagery from two sites and skews toward lighter skin tones; the model
