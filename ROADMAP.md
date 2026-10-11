@@ -31,6 +31,28 @@ page. See `README.md` for numbers and how to reproduce them. This file lists wha
 | 8 | Add squamous cell carcinoma as an eighth class (ISIC 2019 has 431 extra images) | Currently dropped because it does not map onto HAM10000's classes | Retrain |
 | 9 | Voice input (browser Web Speech API first; Vapi only if needed) | Accessibility | Medium |
 
+## Compute and model-hosting decisions
+
+* **RunPod: not needed now.** All current training (three models plus baselines) ran on the local RTX 5070
+  Laptop GPU in about 2.5 GPU-hours. Revisit only if retraining at 288 to 320 px proves too slow locally
+  (untested estimate: a few hours per model). Use rented GPUs with public datasets only, never patient data.
+* **LLM for the assistant: local and offline by default (Ollama).** Free, private, and consistent with the rule
+  that nothing health-related goes to a third party without consent. The GPU has about 8 GB: a 4-bit quantised
+  3 to 8 billion parameter instruct model should fit, but an 8B model plus the vision ensemble on the same GPU
+  is tight (an estimate, not tested). Check `nvidia-smi`; if too tight, use a 3 to 4B model or run the vision
+  models on CPU.
+* **Small local models follow instructions and structured output less reliably.** That is acceptable because
+  every safety-critical decision is deterministic code. It does affect conversation quality and symptom
+  extraction, so choose the model by measurement (extraction accuracy and safety-rule compliance on the
+  synthetic transcripts), using schema-constrained JSON output, Pydantic validation and the fixed
+  questionnaire fallback.
+* **NVIDIA NIM:** the hosted API catalogue is acceptable for prototyping with **synthetic data only** (not
+  offline; requests go to NVIDIA; free tier is rate-limited). Self-hosted NIM containers are probably
+  impractical on an 8 GB laptop GPU and production use may need a licence. Verify NVIDIA's current terms.
+  Other free cloud tiers (Groq, OpenRouter, Google AI Studio) follow the same rule: synthetic data only.
+* **One provider factory** selected by `LLM_PROVIDER` (ollama | nvidia_nim | anthropic; default ollama), so the
+  fake-chain tests do not change and offline mode is always testable.
+
 ## Prompt for the conversational assistant (to hand to a coding agent)
 
 ```text
@@ -108,5 +130,14 @@ Extend scripts/make_model_card.py only if new measured numbers are shown in the 
 DELIVERABLES / DEFINITION OF DONE
 Design doc approved; code in skinlesion/assistant/ and webapp/; tests passing; README and ROADMAP updated; a short
 SAFETY.md listing each rule above and the test that enforces it; commits in small steps; no pushes without my OK.
+LLM PROVIDER
+Implement a provider factory (env LLM_PROVIDER = ollama | nvidia_nim | anthropic; default ollama, fully offline)
+via LangChain chat models (langchain-ollama, langchain-nvidia-ai-endpoints, langchain-anthropic). Target a
+local 3-8B instruct model on an 8 GB GPU (the vision ensemble shares it). Use schema-constrained JSON output for
+extraction and validate with Pydantic. Offline mode (no network, no API key) must work end to end, falling back
+to a fixed questionnaire and templated report. Benchmark 2-3 candidate local models on the synthetic
+transcripts and document extraction accuracy and safety-rule compliance before choosing a default. Hosted
+providers may only receive synthetic data unless the user has explicitly consented.
+
 OUT OF SCOPE: diagnosis, treatment advice, storing health data, retraining, changing the risk thresholds.
 ```
