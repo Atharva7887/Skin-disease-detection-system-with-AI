@@ -5,7 +5,7 @@ import torch
 from torch import nn
 from torchvision import models
 
-from .config import CLASS_CODES
+from .config import CLASS_CODES, IMAGENET_MEAN, IMAGENET_STD
 
 SUPPORTED = ("efficientnet_b0", "efficientnet_b2", "resnet50", "mobilenet_v3_large")
 # Any other architecture can be used through timm as "timm/<name>", e.g.
@@ -51,10 +51,23 @@ def set_backbone_trainable(model: nn.Module, name: str, trainable: bool) -> None
             p.requires_grad = trainable
 
 
-def save_checkpoint(path, model: nn.Module, name: str, img_size: int, metrics: dict) -> None:
+def normalization_for(model: nn.Module, name: str):
+    """(mean, std) the backbone's pretrained weights expect."""
+    if name.startswith(TIMM_PREFIX):
+        import timm
+
+        cfg = timm.data.resolve_data_config({}, model=model)
+        return tuple(cfg["mean"]), tuple(cfg["std"])
+    return IMAGENET_MEAN, IMAGENET_STD
+
+
+def save_checkpoint(path, model: nn.Module, name: str, img_size: int, metrics: dict,
+                    mean=IMAGENET_MEAN, std=IMAGENET_STD) -> None:
     torch.save(
         {
             "arch": name,
+            "mean": list(mean),
+            "std": list(std),
             "state_dict": model.state_dict(),
             "classes": CLASS_CODES,
             "img_size": img_size,

@@ -8,3 +8,4 @@ uploads/
 *.pkl
 *.h5
 .env
+logs/

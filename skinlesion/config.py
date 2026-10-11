@@ -21,3 +21,10 @@ DISCLAIMER = (
     "This tool is a research prototype and is NOT a medical device. "
     "It cannot diagnose skin cancer. Consult a qualified dermatologist."
 )
+
+# Measured on the independent ISIC 2018 Task 3 test set (1,511 images; 171 melanomas, 908 nevi)
+# with the shipped 3-model ensemble and the triage rule in triage.py. Update if models change.
+PERFORMANCE_NOTE = (
+    "In testing on 1,511 dermoscopy images, this tool did not flag about 14% of melanomas, and flagged "
+    "about 13% of ordinary moles. A result that is not flagged is not a reassurance."
+)

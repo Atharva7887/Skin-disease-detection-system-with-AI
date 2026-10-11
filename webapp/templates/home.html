@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>Take your Skin Cancer Test Now!</h1>
+  <p class="lead">Skin cancers are cancers that arise from the skin. They are due to the development of abnormal cells in
+    the skin. Machine learning and neural networks can analyze images of moles and lesions to identify suspicious
+    patterns, aiding in early detection.</p>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('take_test') }}">Take a test</a>
+    <a class="btn outline" href="{{ url_for('learn') }}">How it works?</a>
+  </div>
+</section>
+{% endblock %}

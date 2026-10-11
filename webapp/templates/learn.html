@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}More about Skin Cancer{% endblock %}
+{% block content %}
+<h1>More about Skin Cancer</h1>
+<p class="lead">How this tool works, the seven lesion types it recognises, and how to protect your skin.</p>
+
+<h2>How it works</h2>
+<p>You upload a photo of a skin lesion. Three neural networks (ConvNeXt-V2, EfficientNetV2 and MaxViT), trained on
+the public HAM10000 and ISIC 2019 dermoscopy datasets (about 25,000 images), each estimate how closely it resembles
+seven lesion categories, and their estimates are averaged. A rule-based step then flags results that involve
+potentially malignant categories or low confidence and recommends clinician review. The optional heatmap shows
+which image regions most influenced the prediction; it is not an outline of the lesion.</p>
+<p class="callout">{{ disclaimer }} {{ performance_note }} Accuracy on phone photos and darker skin tones is expected to be lower than on the
+dermoscopic training data.</p>
+
+<h2>Lesion types</h2>
+<div class="class-list">
+  {% for code, i in info.items() %}
+  <article class="about"><h3>{{ i.title }}</h3><p>{{ i.summary }}</p></article>
+  {% endfor %}
+</div>
+
+<h2>Precautions</h2>
+<div class="cards">
+  {% for title, text in precautions %}
+  <div><h3>{{ title }}</h3><p>{{ text }}</p></div>
+  {% endfor %}
+</div>
+{% endblock %}
