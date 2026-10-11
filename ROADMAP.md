@@ -26,10 +26,68 @@ page. See `README.md` for numbers and how to reproduce them. This file lists wha
 | 3 | Put colour constancy / hair removal **inside** training | Test-time use hurt (accuracy 89% to 75-87%); inside training it is untested | Hours of GPU |
 | 4 | Age / sex / body-site as model inputs (HAM10000 has them) | Known to help a few points; the app would need to ask for them | Retrain |
 | 5 | Evaluate on phone photos (PAD-UFES-20; check its licence first) and on skin-tone diversity data | The app's real input is phone photos; fairness is currently unmeasured | Medium |
+| 5a | **Out-of-scope handling** (an "other / not one of these" class or an out-of-distribution detector) | Clinical photo datasets are full of rashes and conditions outside our 7 classes; today the app labels anything it sees as one of the seven | Medium |
 | 6 | Publish model weights (about 320 MB; ConvNeXt file exceeds GitHub's 100 MB limit) via a GitHub Release or Git LFS | Others cannot run the app without them | Low |
 | 7 | CI (GitHub Actions: pytest), Dockerfile, HawkScan DAST scan (needs `hawk` CLI and `HAWK_API_KEY`) | Reproducibility and security | Low |
 | 8 | Add squamous cell carcinoma as an eighth class (ISIC 2019 has 431 extra images) | Currently dropped because it does not map onto HAM10000's classes | Retrain |
 | 9 | Voice input (browser Web Speech API first; Vapi only if needed) | Accessibility | Medium |
+
+## Dataset findings: what to add, what not to
+
+Verified means checked against the ISIC challenge data page or our own accounting in this repository.
+Everything else comes from secondary sources (including an LLM-written summary) and must be checked
+against the dataset's own page before use. Licences vary and several are non-commercial or request-based.
+
+### ISIC challenge years (verified)
+
+| Year | Images | Labels | Licence | Usable for the 7-class model? |
+|---|---|---|---|---|
+| 2016 Part 3 | 900 | benign / malignant only | CC-0 | No: cannot map to 7 classes |
+| 2017 | 2,000 | melanoma / nevus / seborrheic keratosis | CC-0 | Partly: maps to mel, nv, bkl only |
+| 2018 Task 3 | 10,015 | 7 classes | CC-BY-NC | Already used (this is HAM10000) |
+| 2019 | 25,331 | 8 classes | CC-BY-NC | Already used: 14,885 extra images (SCC and UNK dropped) |
+| 2020 | 33,126 | diagnosis CSV | CC-BY-NC | Partly, see below |
+| 2024 SLICE-3D | 401,059 | malignancy only | CC-BY-NC | No: different image type, binary labels |
+
+* ISIC 2019 already contains all 10,015 HAM10000 images (verified: exact overlap) and none of the ISIC 2018
+  test images. Its 15,316 other images are BCN20000 and MSK; about 12.4k of those are BCN20000, so most of
+  what is publicly labelled in BCN20000 is already in our training data. A quoted figure of 24,453 BCN20000
+  images looks wrong.
+* **ISIC 2020** is the only yearly set worth a trial, mainly for melanoma. Unverified recollection: most of its
+  "benign" images have an unknown diagnosis (unusable) and it has only around 600 melanomas, so the gain would
+  be modest (roughly 13% more melanoma training data). Check the diagnosis column before committing.
+* ISIC 2024 SLICE-3D are 2D crops from total-body photographs with binary labels; the claim that it holds 3D
+  volumetric data appears to be inaccurate.
+
+### Other datasets (unverified; check licence and label taxonomy first)
+
+| Dataset | What it is | Use here |
+|---|---|---|
+| PAD-UFES-20 | 2,298 smartphone images, 6 classes, patient features (licence not confirmed) | Test-only first: phone-photo gap |
+| DDI (Stanford) | Biopsy-proven images across light, medium and dark skin tones; registration / data-use terms | Test-only: skin-tone fairness |
+| Fitzpatrick 17k | 16,577 clinical images with Fitzpatrick skin-type labels; 100+ conditions; labels reported noisy | Skin-tone analysis; partial class mapping |
+| SCIN (Google) | 10k+ crowdsourced phone images with symptoms and skin-type fields; many non-lesion conditions | Out-of-scope examples; check licence |
+| Derm7pt | About 1,000 cases with paired dermoscopic and clinical photos | Academic terms; small |
+| BCN20000 | Hospital Clinic Barcelona dermoscopy | Mostly already in ISIC 2019 |
+| MIDAS | Paired dermoscopic and clinical images, biopsy-proven | Not verified |
+
+### Recommended order
+
+1. **Measure before collecting.** Evaluate the current ensemble on PAD-UFES-20 and DDI (test only, no
+   training). The phone-photo and skin-tone gaps are the real risk and have never been measured here.
+2. **Handle out-of-scope images** (item 5a above) before adding clinical data that contains conditions
+   outside the 7 classes.
+3. **Then** consider training additions: ISIC 2020 for melanoma (map nevus, melanoma and
+   seborrheic-keratosis-type diagnoses to nv, mel, bkl; drop unknown), and phone-photo data for the classes it
+   covers.
+4. Report accuracy by Fitzpatrick skin type once any such data is available.
+
+### Rules for adding any dataset
+
+Check the licence; de-duplicate by image ID **and** perceptual hash against HAM10000, ISIC 2019 and the ISIC 2018
+test set; group splits by patient or lesion; never tune thresholds on test data; keep the existing evaluation
+sets untouched; compare against the current model with the same protocol (change one thing at a time) and
+record the result in the model card.
 
 ## Compute and model-hosting decisions
 
