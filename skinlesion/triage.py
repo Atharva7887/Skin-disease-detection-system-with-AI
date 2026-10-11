@@ -57,18 +57,23 @@ def make_classify(predict: Callable[[Image.Image, int], list[dict]]):
 
 def assess_risk(state: TriageState) -> TriageState:
     preds = state["predictions"]
-    concern = sum(p["probability"] for p in preds if p["code"] in MALIGNANT_OR_PRECANCEROUS)
+    # The flag is defined on the RAW (uncalibrated) ensemble probabilities: its measured sensitivity /
+    # false-alarm rate (see README) holds for that definition. ``probability`` may be calibrated
+    # for display and would change the flag's behaviour.
+    raw = lambda p: p.get("raw_probability", p["probability"])  # noqa: E731
+    concern = sum(raw(p) for p in preds if p["code"] in MALIGNANT_OR_PRECANCEROUS)
     top = preds[0]
+    top_raw = max(raw(p) for p in preds)
     if top["code"] in MALIGNANT_OR_PRECANCEROUS or concern >= HIGH_RISK_MASS:
         risk = "high"
-    elif top["probability"] < LOW_CONFIDENCE:
+    elif top_raw < LOW_CONFIDENCE:
         risk = "elevated"
     else:
         risk = "low"
     return {
         "concern_probability": round(concern, 4),
         "risk": risk,
-        "needs_review": risk != "low" or top["probability"] < LOW_CONFIDENCE,
+        "needs_review": risk != "low" or top_raw < LOW_CONFIDENCE,
     }
 
 

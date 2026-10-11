@@ -1,0 +1,22 @@
+{
+  "temperature": 0.48,
+  "members": [
+    "models/convnextv2_combined/best.pt",
+    "models/effnetv2s_combined/best.pt",
+    "models/maxvit_combined/best.pt"
+  ],
+  "tta": true,
+  "fitted_on": "HAM10000 validation split (1002 images)",
+  "fitted": "2026-10-11",
+  "val_before": {
+    "ece": 0.2493,
+    "nll": 0.5637,
+    "mean_confidence": 0.6469
+  },
+  "val_after": {
+    "ece": 0.0319,
+    "nll": 0.3394,
+    "mean_confidence": 0.8991
+  },
+  "val_accuracy": 0.8962
+}

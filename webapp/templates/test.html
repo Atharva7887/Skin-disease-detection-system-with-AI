@@ -74,7 +74,8 @@
     <p id="ask-a" role="status"></p>
   </div>
   {% endif %}
-  <p class="callout" style="margin-top:40px">{{ disclaimer }} {{ performance_note }}</p>
+  <p style="text-align:center;margin-top:32px"><a class="btn outline" href="{{ url_for('technical') }}">Technical details: accuracy, F1, hardware</a></p>
+  <p class="callout" style="margin-top:24px">{{ disclaimer }} {{ performance_note }}</p>
 </section>
 {% endblock %}
 {% block scripts %}<script src="{{ url_for('static', filename='test.js') }}"></script>{% endblock %}

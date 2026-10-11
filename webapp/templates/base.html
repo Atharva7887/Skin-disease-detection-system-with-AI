@@ -19,7 +19,7 @@
   </nav>
 </header>
 <main>{% block content %}{% endblock %}</main>
-<footer>{{ disclaimer }}</footer>
+<footer>{{ disclaimer }} &middot; <a href="{{ url_for('technical') }}">Technical details</a></footer>
 {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import time
 from collections import defaultdict, deque
@@ -25,6 +26,32 @@ DEFAULT_MODEL_PATH = ",".join([
     "models/effnetv2s_combined/best.pt",
     "models/maxvit_combined/best.pt",
 ])
+CALIBRATION_FILE = Path(__file__).with_name("calibration.json")
+CARD_FILE = Path(__file__).with_name("model_card.json")
+
+
+def load_card() -> dict | None:
+    return json.loads(CARD_FILE.read_text(encoding="utf-8")) if CARD_FILE.is_file() else None
+
+
+def performance_note(card: dict | None) -> str:
+    """Miss / false-alarm rates quoted in the UI, read from the generated model card (single source of truth)."""
+    if not card:
+        return PERFORMANCE_NOTE
+    r, n = card["ensemble"]["risk_flag"], card["ensemble"]["isic2018"]["n_images"]
+    return (f"In testing on {n:,} dermoscopy images, this tool did not flag about {round((1 - r['melanoma_flagged']) * 100)}% "
+            f"of melanomas, and flagged about {round(r['nevus_flagged'] * 100)}% of ordinary moles. "
+            "A result that is not flagged is not a reassurance.")
+
+
+def load_calibration(paths: list[str]) -> dict | None:
+    """Temperature fitted by scripts/fit_calibration.py, used only if it was fitted for these exact checkpoints."""
+    if not CALIBRATION_FILE.is_file():
+        return None
+    cal = json.loads(CALIBRATION_FILE.read_text(encoding="utf-8"))
+    return cal if set(cal.get("members", [])) == set(paths) else None
+
+
 ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP"}
 Image.MAX_IMAGE_PIXELS = 50_000_000  # guard against decompression bombs
 
@@ -45,11 +72,17 @@ def create_app(predict=None, model_path: str | None = None, llm=None,
         path = model_path or os.getenv("MODEL_PATH", DEFAULT_MODEL_PATH)
         paths = [x.strip() for x in path.split(",") if x.strip()]
         if paths and all(os.path.isfile(x) for x in paths):
+            import torch
             from skinlesion.predict import Predictor
-            predictor = Predictor(path)
+            cal = load_calibration(paths)
+            use_tta = os.getenv("TTA", "1") == "1"  # 8-view averaging, ~8x compute; the documented numbers assume it
+            predictor = Predictor(path, tta=use_tta, temperature=cal["temperature"] if cal else 1.0)
+            app.logger.info("loaded %d model(s); TTA=%s; temperature=%s", len(paths), use_tta, predictor.temperature)
             predict, heatmap_fn = predictor.predict, predictor.heatmap
         else:
             load_error = f"Model file not found at '{path}'. Train one with train.py or set MODEL_PATH."
+    card = load_card()
+    note = performance_note(card)
     llm = llm or get_llm()
     explainer = explainer or make_explainer(llm)
     chat_graph = chat_graph or build_chat_graph(llm)
@@ -58,7 +91,7 @@ def create_app(predict=None, model_path: str | None = None, llm=None,
     hits = defaultdict(deque)
 
     def page(template, **ctx):
-        return render_template(template, disclaimer=DISCLAIMER, performance_note=PERFORMANCE_NOTE, ready=graph is not None,
+        return render_template(template, disclaimer=DISCLAIMER, performance_note=note, ready=graph is not None,
                                precautions=PRECAUTIONS, info=CLASS_INFO,
                                chat_enabled=chat_graph is not None, **ctx)
 
@@ -74,6 +107,10 @@ def create_app(predict=None, model_path: str | None = None, llm=None,
     @app.get("/learn")
     def learn():
         return page("learn.html")
+
+    @app.get("/technical")
+    def technical():
+        return page("technical.html", card=load_card())
 
     @app.get("/contact")
     def contact():

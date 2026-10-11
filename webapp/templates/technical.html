@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Technical details - Skin Cancer Awareness{% endblock %}
+{% block content %}
+<h1>Technical details</h1>
+<p class="lead">How the model was built and how well it performs, with the limits stated plainly.</p>
+<p class="callout">{{ disclaimer }} {{ performance_note }}</p>
+
+{% if not card %}
+<p class="error">The model card has not been generated yet. Run <code>python scripts/make_model_card.py</code>.</p>
+{% else %}
+{% set e = card.ensemble %}
+<h2>Headline numbers</h2>
+<p>Ensemble of three models, measured on {{ card.eval_sets.isic2018 }}</p>
+<div class="stats">
+  <p>Accuracy<strong>{{ '%.1f' % (e.isic2018.accuracy * 100) }}%</strong></p>
+  <p>Macro-F1<strong>{{ '%.3f' % e.isic2018.macro_f1 }}</strong></p>
+  <p>Balanced accuracy<strong>{{ '%.3f' % e.isic2018.balanced_accuracy }}</strong></p>
+  <p>Melanomas flagged<strong>{{ '%.0f' % (e.risk_flag.melanoma_flagged * 100) }}%</strong></p>
+</div>
+<details class="def">
+  <summary>What do these mean?</summary>
+  <p><b>Accuracy</b>: share of images given the correct lesion type. It looks good partly because 60% of images
+  are ordinary moles. <b>Balanced accuracy</b>: the average recall over the seven classes, so rare types count
+  equally. <b>Macro-F1</b>: the average over classes of the harmonic mean of precision and recall; it punishes
+  neglecting rare classes. <b>Melanomas flagged</b>: how often the app's risk flag fires on a real melanoma
+  (the flag is a separate rule on top of the classifier: {{ e.risk_flag.rule }}). On the same images it also flags
+  {{ '%.0f' % (e.risk_flag.nevus_flagged * 100) }}% of ordinary moles.</p>
+</details>
+
+{% if e.calibration %}
+{% set c = e.calibration.isic2018 %}
+<h2>What the confidence percentage means</h2>
+<p>The percentage on the results page is calibrated: it was adjusted (one number, fitted on validation images only,
+never on the test set) so that stated confidence matches how often the model is actually right. Before calibration the
+models were too timid.</p>
+<div class="scroll"><table>
+  <thead><tr><th>On the independent ISIC 2018 images</th><th>Average stated confidence</th><th>Actual accuracy</th><th>Calibration error (ECE)</th></tr></thead>
+  <tbody>
+  <tr><td>Before calibration</td><td>{{ '%.1f' % (c.raw.mean_confidence * 100) }}%</td><td>{{ '%.1f' % (c.accuracy * 100) }}%</td><td>{{ '%.3f' % c.raw.ece }}</td></tr>
+  <tr class="total"><td>Shown in the app</td><td>{{ '%.1f' % (c.calibrated.mean_confidence * 100) }}%</td><td>{{ '%.1f' % (c.accuracy * 100) }}%</td><td>{{ '%.3f' % c.calibrated.ece }}</td></tr>
+  </tbody>
+</table></div>
+{% if e.reliability %}
+<h3>When the app shows a percentage, how often is it right?</h3>
+<div class="scroll"><table>
+  <thead><tr><th>Percentage shown</th><th>Images</th><th>Actually correct</th></tr></thead>
+  <tbody>
+  {% for b in e.reliability %}
+  <tr><td>{{ '%.0f' % (b.low * 100) }}% to {{ '%.0f' % (b.high * 100) }}%</td><td>{{ b.n }}</td><td>{{ '%.0f' % (b.accuracy * 100) }}%</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% set cn = e.confident_nevus %}
+<p><b>A high percentage is not safety.</b> Among the {{ cn.n }} images the app called a mole ("melanocytic nevus") with
+90% or more shown confidence, {{ cn.n_melanoma }} were actually melanomas ({{ '%.1f' % (cn.share_melanoma * 100) }}%).
+That is {{ '%.0f' % (cn.melanomas_in_group * 100) }}% of all {{ cn.n_melanoma_total }} melanomas in the test set,
+which the app presented as confidently benign.</p>
+{% endif %}
+<p><small>Calibration does not make the model more accurate and does not change which type is on top. A high percentage
+still means "the model is sure", not "this is correct": confidently wrong answers exist, and the melanoma risk flag
+is a separate rule defined on the uncalibrated probabilities. {{ card.inference.calibration }}.</small></p>
+{% endif %}
+
+<h2>Models</h2>
+<div class="scroll"><table>
+  <thead><tr><th>Model</th><th>Params</th><th>ISIC 2018 acc.</th><th>ISIC 2018 macro-F1</th><th>Held-out acc.</th><th>Held-out macro-F1</th><th>Training</th></tr></thead>
+  <tbody>
+  {% for m in card.models %}
+  <tr><td>{{ m.arch }}</td><td>{{ m.params_millions }} M</td>
+      <td>{{ '%.1f' % (m.isic2018.accuracy * 100) }}%</td><td>{{ '%.3f' % m.isic2018.macro_f1 }}</td>
+      <td>{{ '%.1f' % (m.holdout.accuracy * 100) }}%</td><td>{{ '%.3f' % m.holdout.macro_f1 }}</td>
+      <td>{% if m.training %}{{ m.training.epochs_run }} epochs, about {{ m.training.minutes }} min{% else %}n/a{% endif %}</td></tr>
+  {% endfor %}
+  <tr class="total"><td>Ensemble (average)</td><td>-</td>
+      <td>{{ '%.1f' % (e.isic2018.accuracy * 100) }}%</td><td>{{ '%.3f' % e.isic2018.macro_f1 }}</td>
+      <td>{{ '%.1f' % (e.holdout.accuracy * 100) }}%</td><td>{{ '%.3f' % e.holdout.macro_f1 }}</td><td>-</td></tr>
+  </tbody>
+</table></div>
+<p><small>Held-out: {{ card.eval_sets.holdout }}</small></p>
+
+<h2>Per lesion type (ensemble, ISIC 2018)</h2>
+<div class="scroll"><table>
+  <thead><tr><th>Type</th><th>Precision</th><th>Recall</th><th>F1</th><th>Images</th></tr></thead>
+  <tbody>
+  {% for code, c in e.isic2018.per_class.items() %}
+  <tr><td>{{ c.name }}</td><td>{{ '%.2f' % c.precision }}</td><td>{{ '%.2f' % c.recall }}</td><td>{{ '%.2f' % c['f1-score'] }}</td><td>{{ c.support }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+
+<h2>Confusion matrix (ensemble, ISIC 2018)</h2>
+<p><small>Rows are the true type, columns the model's answer. Darker cells hold more images.</small></p>
+{% set codes = card.classes.keys() | list %}
+<div class="scroll"><table class="cm">
+  <thead><tr><th></th>{% for c in codes %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for row in e.isic2018.confusion_matrix %}
+  {% set total = row | sum %}{% set ri = loop.index0 %}
+  <tr><th>{{ codes[ri] }}</th>
+    {% for v in row %}<td style="--a: {{ '%.3f' % ((v / total) if total else 0) }}" class="{{ 'diag' if loop.index0 == ri else '' }}">{{ v }}</td>{% endfor %}</tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+
+<h2>Hardware and software</h2>
+<div class="scroll"><table>
+  <tbody>
+  <tr><th>GPU</th><td>{{ card.hardware.gpu }}{% if card.hardware.gpu_memory %} ({{ card.hardware.gpu_memory }}){% endif %}</td></tr>
+  <tr><th>CPU</th><td>{{ card.hardware.cpu }} ({{ card.hardware.logical_cpus }} logical cores)</td></tr>
+  <tr><th>Memory</th><td>{{ card.hardware.ram_gb }} GB</td></tr>
+  <tr><th>OS</th><td>{{ card.hardware.os }}</td></tr>
+  <tr><th>Software</th><td>Python {{ card.software.python }}, PyTorch {{ card.software.pytorch }} (CUDA {{ card.software.cuda }}), timm {{ card.software.timm }}, torchvision {{ card.software.torchvision }}</td></tr>
+  </tbody>
+</table></div>
+
+<h2>Training setup</h2>
+<div class="scroll"><table>
+  <tbody>
+  {% for k, v in card.training.items() %}<tr><th>{{ k.replace('_', ' ') | capitalize }}</th><td>{{ v }}</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+
+<h2>Limitations</h2>
+<ul>
+  <li>Trained on dermoscopy images, not phone photos. Results on phone photos are expected to be worse.</li>
+  <li>The training data skews toward lighter skin tones and a few clinics; fairness across skin tones has not been measured.</li>
+  <li>Melanoma is the weak spot: the single most likely answer is melanoma for only about two thirds of true melanomas; the risk flag recovers more, at the cost of false alarms.</li>
+  <li>Probabilities are model scores, not clinical risk. Predictions are not a diagnosis.</li>
+  <li>Figures were generated on {{ card.generated }} from the shipped checkpoints.</li>
+</ul>
+{% endif %}
+{% endblock %}

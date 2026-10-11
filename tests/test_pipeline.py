@@ -275,6 +275,88 @@ def test_low_risk_text_never_reassures():
 
 
 def test_pages_state_measured_miss_rate(client):
-    from skinlesion.config import PERFORMANCE_NOTE
-    assert "14%" in PERFORMANCE_NOTE
-    assert b"did not flag about 14%" in client.get("/test").data
+    from webapp.app import load_card, performance_note
+    note = performance_note(load_card())
+    assert "did not flag about" in note and "not a reassurance" in note
+    assert note.encode() in client.get("/test").data.replace(b"&#39;", b"'")
+
+
+# ---------- technical details page ----------
+def test_technical_page_without_card_explains_how_to_generate(client, tmp_path, monkeypatch):
+    from pathlib import Path as P
+    monkeypatch.setattr(P, "is_file", lambda self: False if self.name == "model_card.json" else P.exists(self))
+    r = client.get("/technical")
+    assert r.status_code == 200 and b"make_model_card" in r.data
+
+
+def test_technical_page_renders_a_card(client):
+    import json as j
+    from pathlib import Path as P
+    card_path = P(__file__).resolve().parents[1] / "webapp" / "model_card.json"
+    if not card_path.exists():
+        pytest.skip("model_card.json not generated")
+    card = j.loads(card_path.read_text(encoding="utf-8"))
+    html = client.get("/technical").get_data(as_text=True)
+    e = card["ensemble"]["isic2018"]
+    assert f"{e['accuracy'] * 100:.1f}%" in html and f"{e['macro_f1']:.3f}" in html
+    assert card["hardware"]["gpu"].split(" ")[0] in html
+    assert "Confusion matrix" in html and "not a diagnosis" in html.lower()
+
+
+# ---------- calibration + TTA ----------
+from skinlesion.predict import Predictor, apply_temperature, dihedral_views
+
+
+def test_temperature_sharpens_without_changing_the_ranking():
+    p = torch.tensor([[0.5, 0.3, 0.2]])
+    sharp, soft = apply_temperature(p, 0.5), apply_temperature(p, 2.0)
+    assert sharp.argmax() == soft.argmax() == p.argmax()
+    assert sharp.max() > p.max() > soft.max()
+    assert abs(float(sharp.sum()) - 1) < 1e-6 and torch.equal(apply_temperature(p, 1.0), p)
+
+
+def test_dihedral_views_are_eight_distinct_symmetries():
+    x = torch.arange(2 * 3 * 4 * 4, dtype=torch.float32).view(2, 3, 4, 4)
+    views = dihedral_views(x)
+    assert len(views) == 8 and all(v.shape == x.shape for v in views)
+    assert len({tuple(v.flatten().tolist()) for v in views}) == 8
+
+
+def test_predictor_calibrates_display_but_keeps_raw(tmp_path):
+    save_checkpoint(tmp_path / "m.pt", build_model("mobilenet_v3_large", pretrained=False), "mobilenet_v3_large", 64, {})
+    plain = Predictor(str(tmp_path / "m.pt"), device="cpu")
+    sharp = Predictor(str(tmp_path / "m.pt"), device="cpu", temperature=0.5, tta=True)
+    img = noisy_image(96)
+    a, b = plain.predict(img, 7), sharp.predict(img, 7)
+    assert a[0]["code"] == b[0]["code"]                      # ranking unchanged
+    assert b[0]["probability"] > b[0]["raw_probability"]     # displayed value is sharper than the raw one
+    assert abs(a[0]["probability"] - a[0]["raw_probability"]) < 1e-9
+
+
+def test_risk_flag_uses_raw_probabilities_not_the_displayed_ones():
+    def predict(image, top_k=3):  # calibration inflated the top class; raw says 'nv' is only 45% likely
+        return [{"code": "nv", "name": "nv", "probability": 0.92, "raw_probability": 0.45},
+                {"code": "mel", "name": "mel", "probability": 0.05, "raw_probability": 0.22}]
+    out = run_triage(build_graph(predict), noisy_image())
+    assert out["risk"] == "high"            # 22% raw melanoma mass crosses the 20% rule
+    assert out["concern_probability"] == 0.22
+
+
+def test_calibration_only_applies_to_the_matching_ensemble(tmp_path, monkeypatch):
+    import json as j
+    import webapp.app as appmod
+    f = tmp_path / "cal.json"
+    f.write_text(j.dumps({"temperature": 0.5, "members": ["a.pt", "b.pt"]}))
+    monkeypatch.setattr(appmod, "CALIBRATION_FILE", f)
+    assert appmod.load_calibration(["b.pt", "a.pt"])["temperature"] == 0.5
+    assert appmod.load_calibration(["a.pt", "c.pt"]) is None
+
+
+def test_technical_page_states_that_high_confidence_is_not_safety(client):
+    import json as j
+    from pathlib import Path as P
+    card_path = P(__file__).resolve().parents[1] / "webapp" / "model_card.json"
+    card = j.loads(card_path.read_text(encoding="utf-8"))
+    html = client.get("/technical").get_data(as_text=True)
+    assert "A high percentage is not safety" in html
+    assert str(card["ensemble"]["confident_nevus"]["n_melanoma"]) in html

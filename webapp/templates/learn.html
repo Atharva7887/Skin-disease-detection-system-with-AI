@@ -13,6 +13,8 @@ which image regions most influenced the prediction; it is not an outline of the 
 <p class="callout">{{ disclaimer }} {{ performance_note }} Accuracy on phone photos and darker skin tones is expected to be lower than on the
 dermoscopic training data.</p>
 
+<p><a class="btn outline" href="{{ url_for('technical') }}">Technical details: accuracy, F1, hardware</a></p>
+
 <h2>Lesion types</h2>
 <div class="class-list">
   {% for code, i in info.items() %}

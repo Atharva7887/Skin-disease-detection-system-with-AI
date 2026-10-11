@@ -1,0 +1,435 @@
+{
+  "generated": "2026-10-11",
+  "eval_sets": {
+    "isic2018": "ISIC 2018 Task 3 test set: 1,511 independent dermoscopy images, never used for training or model selection.",
+    "holdout": "HAM10000 test split: 1,002 images from lesions that are not in the training data."
+  },
+  "inference": {
+    "tta": "average over 8 flips/rotations of the image",
+    "ensemble": "mean of the three models' probabilities",
+    "calibration": "temperature 0.48 fitted on the HAM10000 validation split (1002 images); changes the displayed percentage only, never the predicted class, and never the risk flag (defined on raw probabilities)"
+  },
+  "models": [
+    {
+      "arch": "convnextv2_tiny.fcmae_ft_in22k_in1k",
+      "params_millions": 27.9,
+      "checkpoint": "models/convnextv2_combined/best.pt",
+      "isic2018": {
+        "accuracy": 0.8471,
+        "balanced_accuracy": 0.7476,
+        "macro_f1": 0.7663,
+        "melanoma_recall": 0.5906
+      },
+      "holdout": {
+        "accuracy": 0.8503,
+        "balanced_accuracy": 0.721,
+        "macro_f1": 0.7215,
+        "melanoma_recall": 0.5714
+      },
+      "training": {
+        "epochs_run": 11,
+        "minutes": 68
+      }
+    },
+    {
+      "arch": "tf_efficientnetv2_s.in21k_ft_in1k",
+      "params_millions": 20.2,
+      "checkpoint": "models/effnetv2s_combined/best.pt",
+      "isic2018": {
+        "accuracy": 0.8332,
+        "balanced_accuracy": 0.7214,
+        "macro_f1": 0.7323,
+        "melanoma_recall": 0.6784
+      },
+      "holdout": {
+        "accuracy": 0.8303,
+        "balanced_accuracy": 0.7714,
+        "macro_f1": 0.7385,
+        "melanoma_recall": 0.5536
+      },
+      "training": {
+        "epochs_run": 13,
+        "minutes": 17
+      }
+    },
+    {
+      "arch": "maxvit_tiny_tf_224.in1k",
+      "params_millions": 30.4,
+      "checkpoint": "models/maxvit_combined/best.pt",
+      "isic2018": {
+        "accuracy": 0.859,
+        "balanced_accuracy": 0.7816,
+        "macro_f1": 0.7861,
+        "melanoma_recall": 0.5906
+      },
+      "holdout": {
+        "accuracy": 0.8573,
+        "balanced_accuracy": 0.7669,
+        "macro_f1": 0.743,
+        "melanoma_recall": 0.5536
+      },
+      "training": {
+        "epochs_run": 15,
+        "minutes": 39
+      }
+    }
+  ],
+  "ensemble": {
+    "calibration": {
+      "isic2018": {
+        "accuracy": 0.8703,
+        "raw": {
+          "mean_confidence": 0.6445,
+          "ece": 0.2291,
+          "nll": 0.6003
+        },
+        "calibrated": {
+          "mean_confidence": 0.8965,
+          "ece": 0.0323,
+          "nll": 0.4068
+        }
+      },
+      "holdout": {
+        "accuracy": 0.8752,
+        "raw": {
+          "mean_confidence": 0.6436,
+          "ece": 0.2316,
+          "nll": 0.6033
+        },
+        "calibrated": {
+          "mean_confidence": 0.8985,
+          "ece": 0.0285,
+          "nll": 0.4111
+        }
+      }
+    },
+    "isic2018": {
+      "accuracy": 0.8703,
+      "balanced_accuracy": 0.7997,
+      "macro_f1": 0.8116,
+      "melanoma_recall": 0.6491,
+      "n_images": 1511,
+      "per_class": {
+        "akiec": {
+          "name": "Actinic keratoses / intraepithelial carcinoma",
+          "precision": 0.696,
+          "recall": 0.744,
+          "f1-score": 0.719,
+          "support": 43
+        },
+        "bcc": {
+          "name": "Basal cell carcinoma",
+          "precision": 0.84,
+          "recall": 0.849,
+          "f1-score": 0.845,
+          "support": 93
+        },
+        "bkl": {
+          "name": "Benign keratosis-like lesions",
+          "precision": 0.856,
+          "recall": 0.742,
+          "f1-score": 0.795,
+          "support": 217
+        },
+        "df": {
+          "name": "Dermatofibroma",
+          "precision": 0.829,
+          "recall": 0.773,
+          "f1-score": 0.8,
+          "support": 44
+        },
+        "mel": {
+          "name": "Melanoma",
+          "precision": 0.712,
+          "recall": 0.649,
+          "f1-score": 0.679,
+          "support": 171
+        },
+        "nv": {
+          "name": "Melanocytic nevi",
+          "precision": 0.91,
+          "recall": 0.955,
+          "f1-score": 0.932,
+          "support": 908
+        },
+        "vasc": {
+          "name": "Vascular lesions",
+          "precision": 0.939,
+          "recall": 0.886,
+          "f1-score": 0.912,
+          "support": 35
+        }
+      },
+      "confusion_matrix": [
+        [
+          32,
+          1,
+          2,
+          0,
+          7,
+          1,
+          0
+        ],
+        [
+          2,
+          79,
+          2,
+          2,
+          4,
+          4,
+          0
+        ],
+        [
+          9,
+          4,
+          161,
+          1,
+          18,
+          24,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          34,
+          1,
+          8,
+          0
+        ],
+        [
+          1,
+          0,
+          9,
+          1,
+          111,
+          47,
+          2
+        ],
+        [
+          1,
+          9,
+          14,
+          2,
+          15,
+          867,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          1,
+          0,
+          2,
+          31
+        ]
+      ]
+    },
+    "reliability": [
+      {
+        "low": 0.0,
+        "high": 0.5,
+        "n": 44,
+        "accuracy": 0.25
+      },
+      {
+        "low": 0.5,
+        "high": 0.7,
+        "n": 127,
+        "accuracy": 0.488
+      },
+      {
+        "low": 0.7,
+        "high": 0.9,
+        "n": 248,
+        "accuracy": 0.746
+      },
+      {
+        "low": 0.9,
+        "high": 0.97,
+        "n": 558,
+        "accuracy": 0.952
+      },
+      {
+        "low": 0.97,
+        "high": 1.0,
+        "n": 534,
+        "accuracy": 0.985
+      }
+    ],
+    "confident_nevus": {
+      "n": 765,
+      "n_melanoma": 13,
+      "share_melanoma": 0.017,
+      "n_melanoma_total": 171,
+      "melanomas_in_group": 0.076
+    },
+    "risk_flag": {
+      "rule": "HIGH if the top class is melanoma / basal cell carcinoma / actinic keratosis, or their combined probability is at least 20%",
+      "melanoma_flagged": 0.895,
+      "any_malignant_flagged": 0.938,
+      "nevus_flagged": 0.14,
+      "n_melanoma": 171,
+      "n_nevus": 908
+    },
+    "holdout": {
+      "accuracy": 0.8752,
+      "balanced_accuracy": 0.7734,
+      "macro_f1": 0.7768,
+      "melanoma_recall": 0.5893,
+      "n_images": 1002,
+      "per_class": {
+        "akiec": {
+          "name": "Actinic keratoses / intraepithelial carcinoma",
+          "precision": 0.87,
+          "recall": 0.625,
+          "f1-score": 0.727,
+          "support": 32
+        },
+        "bcc": {
+          "name": "Basal cell carcinoma",
+          "precision": 0.865,
+          "recall": 0.882,
+          "f1-score": 0.874,
+          "support": 51
+        },
+        "bkl": {
+          "name": "Benign keratosis-like lesions",
+          "precision": 0.851,
+          "recall": 0.782,
+          "f1-score": 0.815,
+          "support": 110
+        },
+        "df": {
+          "name": "Dermatofibroma",
+          "precision": 0.636,
+          "recall": 0.583,
+          "f1-score": 0.609,
+          "support": 12
+        },
+        "mel": {
+          "name": "Melanoma",
+          "precision": 0.68,
+          "recall": 0.589,
+          "f1-score": 0.632,
+          "support": 112
+        },
+        "nv": {
+          "name": "Melanocytic nevi",
+          "precision": 0.914,
+          "recall": 0.952,
+          "f1-score": 0.933,
+          "support": 671
+        },
+        "vasc": {
+          "name": "Vascular lesions",
+          "precision": 0.737,
+          "recall": 1.0,
+          "f1-score": 0.848,
+          "support": 14
+        }
+      },
+      "confusion_matrix": [
+        [
+          20,
+          1,
+          9,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          45,
+          0,
+          0,
+          0,
+          4,
+          2
+        ],
+        [
+          1,
+          1,
+          86,
+          2,
+          3,
+          17,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          7,
+          3,
+          1,
+          0
+        ],
+        [
+          2,
+          0,
+          3,
+          0,
+          66,
+          38,
+          3
+        ],
+        [
+          0,
+          4,
+          3,
+          0,
+          25,
+          639,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          14
+        ]
+      ]
+    }
+  },
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 5070 Laptop GPU",
+    "gpu_memory": "8151 MiB",
+    "driver": "592.27",
+    "cpu": "Intel(R) Core(TM) Ultra 9 285H",
+    "logical_cpus": 16,
+    "ram_gb": "31",
+    "os": "Windows 11 (10.0.26200)"
+  },
+  "software": {
+    "python": "3.12.10",
+    "pytorch": "2.11.0+cu128",
+    "cuda": "12.8",
+    "torchvision": "0.26.0+cu128",
+    "timm": "1.0.30"
+  },
+  "training": {
+    "data": "HAM10000 (8,011 train images after a lesion-level split) + 14,885 ISIC 2019 images (train only); all HAM10000 and ISIC 2018 test images excluded from the extra data",
+    "input_size": "224 x 224",
+    "optimiser": "AdamW, weight decay 0.01, batch 32, mixed precision",
+    "schedule": "2 epochs head-only warm-up, then full fine-tuning with cosine decay; learning rate 2e-4 to 3e-4 (head), one third of that for the backbone",
+    "loss": "cross-entropy, label smoothing 0.1, square-root inverse-frequency class weights",
+    "augmentation": "random resized crop, horizontal and vertical flips, rotation up to 30 degrees, colour jitter",
+    "model_selection": "best validation macro-F1, early stopping (patience 5 to 6)",
+    "pretraining": "ImageNet-pretrained backbones (ConvNeXt-V2 and EfficientNetV2-S: ImageNet-22k then 1k / 21k then 1k; MaxViT-tiny: ImageNet-1k)"
+  },
+  "classes": {
+    "akiec": "Actinic keratoses / intraepithelial carcinoma",
+    "bcc": "Basal cell carcinoma",
+    "bkl": "Benign keratosis-like lesions",
+    "df": "Dermatofibroma",
+    "mel": "Melanoma",
+    "nv": "Melanocytic nevi",
+    "vasc": "Vascular lesions"
+  }
+}

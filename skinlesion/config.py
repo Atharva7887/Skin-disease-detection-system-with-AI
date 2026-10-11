@@ -23,8 +23,9 @@ DISCLAIMER = (
 )
 
 # Measured on the independent ISIC 2018 Task 3 test set (1,511 images; 171 melanomas, 908 nevi)
-# with the shipped 3-model ensemble and the triage rule in triage.py. Update if models change.
+# with the shipped 3-model ensemble (8-view TTA) and the triage rule in triage.py. The app reads the live
+# numbers from webapp/model_card.json; this is only the fallback. Update if models change.
 PERFORMANCE_NOTE = (
-    "In testing on 1,511 dermoscopy images, this tool did not flag about 14% of melanomas, and flagged "
-    "about 13% of ordinary moles. A result that is not flagged is not a reassurance."
+    "In testing on 1,511 dermoscopy images, this tool did not flag about 10% of melanomas, and flagged "
+    "about 14% of ordinary moles. A result that is not flagged is not a reassurance."
 )

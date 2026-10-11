@@ -1,7 +1,12 @@
 """Inference wrapper used by the web app and the CLI.
 
-``checkpoint`` may be one path or several (a list, or a comma-separated string); with several,
-the models' softmax probabilities are averaged (a simple, robust ensemble).
+* ``checkpoint``: one path or several (a list, or a comma-separated string); several are ensembled
+  by averaging softmax probabilities.
+* ``tta``: average over the 8 flips/rotations of the image (small, consistent gain; 8x the compute).
+* ``temperature``: calibration. The ensemble's average probabilities are sharpened/softened with
+  ``p ** (1/T)`` (renormalised) so that stated confidence matches observed accuracy. It never changes
+  which class is on top. Each prediction carries both ``probability`` (calibrated, for display) and
+  ``raw_probability`` (uncalibrated); the risk flag is defined on the raw one.
 """
 from __future__ import annotations
 
@@ -22,12 +27,33 @@ def _as_paths(checkpoint) -> list[str]:
     return [str(p) for p in checkpoint]
 
 
+def dihedral_views(x: torch.Tensor) -> list[torch.Tensor]:
+    """The 8 symmetries of the square (4 rotations, each with and without a flip) of a (B,3,H,W) batch."""
+    return [torch.rot90(x, k, (2, 3)) for k in range(4)] + [torch.rot90(x.flip(3), k, (2, 3)) for k in range(4)]
+
+
+@torch.no_grad()
+def model_probs(model, x: torch.Tensor, tta: bool = False) -> torch.Tensor:
+    views = dihedral_views(x) if tta else [x]
+    return torch.stack([torch.softmax(model(v).float(), dim=1) for v in views]).mean(0)
+
+
+def apply_temperature(probs: torch.Tensor, temperature: float) -> torch.Tensor:
+    if temperature == 1.0:
+        return probs
+    p = probs.clamp_min(1e-8) ** (1.0 / temperature)
+    return p / p.sum(dim=-1, keepdim=True)
+
+
 class Predictor:
-    def __init__(self, checkpoint, device: str | None = None, cam_member: int = 0):
+    def __init__(self, checkpoint, device: str | None = None, cam_member: int = 0,
+                 tta: bool = False, temperature: float = 1.0):
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         self.members = []
         self.archs: list[str] = []
         self.cam_member = cam_member  # which ensemble member draws the Grad-CAM heatmap
+        self.tta = tta
+        self.temperature = temperature
         for path in _as_paths(checkpoint):
             model, ckpt = load_checkpoint(path, self.device)
             self.members.append((model, eval_transform_for(ckpt), ckpt["classes"]))
@@ -41,18 +67,20 @@ class Predictor:
     @torch.no_grad()
     def predict(self, image: Image.Image, top_k: int = 3) -> list[dict]:
         image = image.convert("RGB")
-        probs = torch.stack([
-            torch.softmax(model(tf(image).unsqueeze(0).to(self.device)).float(), dim=1)[0].cpu()
+        raw = torch.stack([
+            model_probs(model, tf(image).unsqueeze(0).to(self.device), self.tta)[0].cpu()
             for model, tf, _ in self.members
         ]).mean(0)
-        values, indices = probs.topk(min(top_k, len(self.classes)))
+        shown = apply_temperature(raw, self.temperature)
+        order = shown.argsort(descending=True)[: min(top_k, len(self.classes))]
         return [
             {
                 "code": self.classes[i],
                 "name": CLASS_NAMES.get(self.classes[i], self.classes[i]),
-                "probability": round(float(v), 4),
+                "probability": round(float(shown[i]), 4),
+                "raw_probability": round(float(raw[i]), 4),
             }
-            for v, i in zip(values, indices)
+            for i in order.tolist()
         ]
 
     def heatmap(self, image: Image.Image, class_code: str) -> str:
@@ -69,13 +97,16 @@ class Predictor:
         cam = grad_cam(model, self.archs[self.cam_member], x, self.classes.index(class_code))
         return to_data_url(overlay(image, cam))
 
+
 if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser(description="Classify one image.")
     ap.add_argument("image")
     ap.add_argument("--checkpoint", default="models/best.pt", help="path, or comma-separated paths to ensemble")
+    ap.add_argument("--tta", action="store_true")
+    ap.add_argument("--temperature", type=float, default=1.0)
     args = ap.parse_args()
     with Image.open(args.image) as im:
-        for row in Predictor(args.checkpoint).predict(im):
+        for row in Predictor(args.checkpoint, tta=args.tta, temperature=args.temperature).predict(im):
             print(f"{row['probability']:.1%}  {row['code']:6s} {row['name']}")
