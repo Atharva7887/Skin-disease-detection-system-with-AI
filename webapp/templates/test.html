@@ -1,81 +1,124 @@
 {% extends "base.html" %}
 {% block title %}Take a test - Skin Cancer Awareness{% endblock %}
 {% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='assistant.css') }}">
 
-<section id="upload-view">
-  <h1>Take a test!</h1>
-  <p class="lead">Upload a clear image of your skin concern for a potential risk assessment. Early Detection is key!</p>
-  {% if not ready %}<p class="error">No trained model is loaded. Train one with train.py and restart the app.</p>{% endif %}
+<nav class="mode-tabs" role="tablist" aria-label="Screening Mode">
+  <button type="button" class="tab-btn active" id="tab-quick" role="tab" aria-selected="true" aria-controls="quick-flow-container">Quick Photo Analysis</button>
+  <button type="button" class="tab-btn" id="tab-assistant" role="tab" aria-selected="false" aria-controls="assistant-flow-container">Guided Screening Assistant</button>
+</nav>
 
-  <div class="test-grid">
-    <div class="dropzone" id="drop" tabindex="0" role="button" aria-label="Choose an image to upload">
-      <div id="drop-empty">
-        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.6"/><path d="m21 16-5-5-9 9"/></svg>
-        <p>Drag and drop file here or <u>Choose File</u></p>
-        <small>Supported formats: JPEG, PNG, WEBP (max 8 MB)</small>
+<!-- Tab 1: Quick Photo Analysis (Original Flow) -->
+<div id="quick-flow-container">
+  <section id="upload-view">
+    <h1>Take a test!</h1>
+    <p class="lead">Upload a clear image of your skin concern for a potential risk assessment. Early Detection is key!</p>
+    {% if not ready %}<p class="error">No trained model is loaded. Train one with train.py and restart the app.</p>{% endif %}
+
+    <div class="test-grid">
+      <div class="dropzone" id="drop" tabindex="0" role="button" aria-label="Choose an image to upload">
+        <div id="drop-empty">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.6"/><path d="m21 16-5-5-9 9"/></svg>
+          <p>Drag and drop file here or <u>Choose File</u></p>
+          <small>Supported formats: JPEG, PNG, WEBP (max 8 MB)</small>
+        </div>
+        <img id="preview" alt="Selected image preview" hidden>
+        <input type="file" id="file" accept="image/jpeg,image/png,image/webp" hidden>
       </div>
-      <img id="preview" alt="Selected image preview" hidden>
-      <input type="file" id="file" accept="image/jpeg,image/png,image/webp" hidden>
+      <div>
+        <h2 style="margin-top:0">Sample Images</h2>
+        <div class="samples">
+          {% for s in samples %}
+          <button type="button" data-src="{{ url_for('static', filename='samples/' + s) }}" aria-label="Use sample image {{ loop.index }}">
+            <img src="{{ url_for('static', filename='samples/' + s) }}" alt="Sample dermoscopy image {{ loop.index }}">
+          </button>
+          {% endfor %}
+        </div>
+      </div>
     </div>
-    <div>
-      <h2 style="margin-top:0">Sample Images</h2>
-      <div class="samples">
-        {% for s in samples %}
-        <button type="button" data-src="{{ url_for('static', filename='samples/' + s) }}" aria-label="Use sample image {{ loop.index }}">
-          <img src="{{ url_for('static', filename='samples/' + s) }}" alt="Sample dermoscopy image {{ loop.index }}">
-        </button>
+    <button class="btn" id="go" disabled>Get Results</button>
+    <p class="error" id="error" role="alert"></p>
+  </section>
+
+  <section id="result-view" hidden>
+    <button class="back" id="back">&larr;&nbsp; Back</button>
+    <div class="results-head">
+      <h1>Test Results Summary</h1>
+      <button class="btn outline" id="share">Share Results</button>
+    </div>
+    <img class="result-img" id="result-img" alt="Analysed image">
+    <p id="cam-row" style="text-align:center" hidden>
+      <button class="btn outline" id="cam-toggle" aria-pressed="false">Show where the model looked</button><br>
+      <small id="cam-note" hidden>Experimental. Warm colours mark image regions that most influenced this prediction. It is not an outline of the lesion and not a diagnosis.</small>
+    </p>
+    <div class="stats">
+      <p>Prediction<strong id="pred"></strong></p>
+      <p>Confidence<strong id="conf"></strong></p>
+      <p>Result<strong><span class="risk" id="risk"></span></strong></p>
+    </div>
+    <p class="lead" id="explanation" style="margin-top:28px"></p>
+    <div class="bars" id="bars"></div>
+
+    <div class="about">
+      <h2 id="about-title"></h2>
+      <p class="dropcap" id="about-text"></p>
+      <h2>Precautions</h2>
+      <div class="cards">
+        {% for title, text in precautions %}
+        <div>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+          <h3>{{ title }}</h3><p>{{ text }}</p>
+        </div>
         {% endfor %}
       </div>
     </div>
-  </div>
-  <button class="btn" id="go" disabled>Get Results</button>
-  <p class="error" id="error" role="alert"></p>
-</section>
-
-<section id="result-view" hidden>
-  <button class="back" id="back">&larr;&nbsp; Back</button>
-  <div class="results-head">
-    <h1>Test Results Summary</h1>
-    <button class="btn outline" id="share">Share Results</button>
-  </div>
-  <img class="result-img" id="result-img" alt="Analysed image">
-  <p id="cam-row" style="text-align:center" hidden>
-    <button class="btn outline" id="cam-toggle" aria-pressed="false">Show where the model looked</button><br>
-    <small id="cam-note" hidden>Experimental. Warm colours mark image regions that most influenced this prediction. It is not an outline of the lesion and not a diagnosis.</small>
-  </p>
-  <div class="stats">
-    <p>Prediction<strong id="pred"></strong></p>
-    <p>Confidence<strong id="conf"></strong></p>
-    <p>Result<strong><span class="risk" id="risk"></span></strong></p>
-  </div>
-  <p class="lead" id="explanation" style="margin-top:28px"></p>
-  <div class="bars" id="bars"></div>
-
-  <div class="about">
-    <h2 id="about-title"></h2>
-    <p class="dropcap" id="about-text"></p>
-    <h2>Precautions</h2>
-    <div class="cards">
-      {% for title, text in precautions %}
-      <div>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
-        <h3>{{ title }}</h3><p>{{ text }}</p>
-      </div>
-      {% endfor %}
+    {% if chat_enabled %}
+    <div class="ask">
+      <h2>Ask a question about this result</h2>
+      <form id="ask-form">
+        <input id="ask-q" type="text" maxlength="500" placeholder="e.g. What should I watch for in a mole?" aria-label="Your question" required>
+        <button class="btn" type="submit">Ask</button>
+      </form>
+      <p id="ask-a" role="status"></p>
     </div>
+    {% endif %}
+    <p style="text-align:center;margin-top:32px"><a class="btn outline" href="{{ url_for('technical') }}">Technical details: accuracy, F1, hardware</a></p>
+    <p class="callout" style="margin-top:24px">{{ disclaimer }} {{ performance_note }}</p>
+  </section>
+</div>
+
+<!-- Tab 2: Guided Screening Assistant (New Flow) -->
+<div id="assistant-flow-container" hidden>
+  <div class="assistant-container">
+    <h1>Clinical Screening Assistant</h1>
+    <p class="lead">An interactive clinical intake assistant combining symptom history, red-flag screening, and image analysis into a comprehensive report.</p>
+
+    <div class="assistant-panel">
+      <div class="chat-history" id="assistant-chat-history" role="log" aria-live="polite"></div>
+
+      <div class="chips-container" id="assistant-chips-container" hidden></div>
+
+      <div class="chat-uploader" id="assistant-uploader-area" hidden tabindex="0" role="button" aria-label="Click or drop photo here">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.6"/><path d="m21 16-5-5-9 9"/></svg>
+        <p style="margin:8px 0 4px">Drop photo here or <u>Choose File</u></p>
+        <small style="color:var(--muted)">Ensure good lighting, sharp focus, minimal glare (JPEG, PNG, WEBP)</small>
+        <input type="file" id="assistant-file-input" accept="image/jpeg,image/png,image/webp" hidden>
+      </div>
+
+      <form class="assistant-input-bar" id="assistant-input-bar" hidden>
+        <input type="text" id="assistant-text-input" placeholder="Type your answer, or pick an option above…" aria-label="Your response">
+        <button type="submit" class="btn" id="assistant-send-btn">Send</button>
+      </form>
+    </div>
+
+    <div style="text-align:center;margin-top:16px">
+      <button type="button" class="btn outline" id="assistant-restart-btn" hidden style="font-size:14px;padding:6px 16px">Restart Screening</button>
+    </div>
+    <p class="callout" style="margin-top:24px">{{ disclaimer }} {{ performance_note }}</p>
   </div>
-  {% if chat_enabled %}
-  <div class="ask">
-    <h2>Ask a question about this result</h2>
-    <form id="ask-form">
-      <input id="ask-q" type="text" maxlength="500" placeholder="e.g. What should I watch for in a mole?" aria-label="Your question" required>
-      <button class="btn" type="submit">Ask</button>
-    </form>
-    <p id="ask-a" role="status"></p>
-  </div>
-  {% endif %}
-  <p style="text-align:center;margin-top:32px"><a class="btn outline" href="{{ url_for('technical') }}">Technical details: accuracy, F1, hardware</a></p>
-  <p class="callout" style="margin-top:24px">{{ disclaimer }} {{ performance_note }}</p>
-</section>
+</div>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='test.js') }}"></script>{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='test.js') }}"></script>
+<script src="{{ url_for('static', filename='assistant.js') }}"></script>
+{% endblock %}

@@ -21,7 +21,8 @@ page. See `README.md` for numbers and how to reproduce them. This file lists wha
 
 | # | Item | Why | Cost |
 |---|---|---|---|
-| 1 | **Conversational intake + fusion assistant** (prompt below) | Collect symptoms, ask follow-ups, produce a clinician-ready summary | Medium |
+| 1 | **Conversational intake + fusion assistant**: core done | Shipped in `skinlesion/assistant/` with safety rules in `SAFETY.md` and 39 tests (fake chains only; no live LLM run yet) | Done |
+| 1a | **LLM provider factory** (`LLM_PROVIDER` = ollama / nvidia_nim / anthropic, default ollama, offline mode end to end), model benchmark on synthetic transcripts | Planned in the prompt below but **not implemented**: the assistant currently uses the existing Anthropic-only path or the fixed questionnaire | Medium |
 | 2 | Retrain at 288 to 320 px | Likelier accuracy gain than the test-time processing that was tried and rejected | Hours of GPU |
 | 3 | Put colour constancy / hair removal **inside** training | Test-time use hurt (accuracy 89% to 75-87%); inside training it is untested | Hours of GPU |
 | 4 | Age / sex / body-site as model inputs (HAM10000 has them) | Known to help a few points; the app would need to ask for them | Retrain |

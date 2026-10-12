@@ -15,6 +15,11 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request
 from PIL import Image, UnidentifiedImageError
 
+from langgraph.types import Command
+from skinlesion.assistant.graph import build_assistant_graph
+from skinlesion.assistant.prompts import CONSENT_CHIPS, CONSENT_MESSAGE
+from skinlesion.assistant.render import render_report_html, render_report_markdown
+from skinlesion.assistant.sessions import SessionManager
 from skinlesion.config import DISCLAIMER, PERFORMANCE_NOTE
 from skinlesion.info import CLASS_INFO, PRECAUTIONS
 from skinlesion.llm import build_chat_graph, get_llm, known_codes, make_explainer
@@ -60,7 +65,8 @@ CHAT_LIMIT, CHAT_WINDOW = 10, 60  # requests per client per window (seconds)
 
 
 def create_app(predict=None, model_path: str | None = None, llm=None,
-               explainer=None, chat_graph=None, heatmap_fn=None) -> Flask:
+               explainer=None, chat_graph=None, heatmap_fn=None,
+               assistant_graph=None, session_manager=None) -> Flask:
     """``predict`` (callable(image, top_k) -> list[dict]), ``explainer`` and ``chat_graph``
     are injectable for tests. Without them the LLM features use ANTHROPIC_API_KEY if set."""
     app = Flask(__name__)
@@ -88,6 +94,24 @@ def create_app(predict=None, model_path: str | None = None, llm=None,
     chat_graph = chat_graph or build_chat_graph(llm)
     if predict is not None:
         graph = build_graph(predict, explainer=explainer)
+        if assistant_graph is None:
+            assistant_graph = build_assistant_graph(
+                predict_fn=predict,
+                heatmap_fn=heatmap_fn,
+                performance_note=note,
+            )
+    def _wipe_session_data(sid: str) -> None:
+        """Delete everything stored for a finished/expired session: graph state (the patient's answers) and any cached photo."""
+        from skinlesion.assistant.nodes import _IMAGE_STORE
+
+        _IMAGE_STORE.pop(sid, None)
+        saver = getattr(assistant_graph, "checkpointer", None)
+        if saver is not None and hasattr(saver, "delete_thread"):
+            saver.delete_thread(sid)
+
+    session_mgr = session_manager or SessionManager(on_expire=_wipe_session_data)
+    app.extensions["session_manager"] = session_mgr
+    app.extensions["assistant_graph"] = assistant_graph
     hits = defaultdict(deque)
 
     def page(template, **ctx):
@@ -163,6 +187,143 @@ def create_app(predict=None, model_path: str | None = None, llm=None,
         if out.get("error"):
             return jsonify(error=out["error"]), 400 if "limited" in out["error"] or "enter" in out["error"] else 502
         return jsonify(answer=out["answer"], disclaimer=DISCLAIMER)
+
+    # -----------------------------------------------------------------------
+    # Clinical Screening Assistant session endpoints
+    # -----------------------------------------------------------------------
+
+    @app.post("/api/session")
+    def api_session_create():
+        if assistant_graph is None:
+            return jsonify(error="Screening assistant unavailable (models not loaded)."), 503
+        entry = session_mgr.create(request.remote_addr)
+        if entry is None:
+            return jsonify(error="Too many active sessions or rate limit exceeded. Please wait a moment."), 429
+
+        out = assistant_graph.invoke({}, config=entry.thread_config)
+        int_val = out["__interrupt__"][0].value if "__interrupt__" in out and out["__interrupt__"] else {}
+        return jsonify({
+            "session_id": entry.session_id,
+            "type": int_val.get("type", "consent"),
+            "message": int_val.get("message", CONSENT_MESSAGE),
+            "chips": int_val.get("chips", CONSENT_CHIPS),
+        })
+
+    @app.post("/api/session/<sid>/message")
+    def api_session_message(sid: str):
+        if assistant_graph is None:
+            return jsonify(error="Assistant unavailable."), 503
+        entry = session_mgr.get(sid)
+        if entry is None:
+            return jsonify(error="Session expired or not found. Please start a new session."), 404
+        if not session_mgr.check_rate(request.remote_addr):
+            return jsonify(error="Rate limit exceeded. Please wait a moment."), 429
+
+        body = request.get_json(silent=True) or {}
+        text = str(body.get("text", "")).strip()
+        if not text:
+            return jsonify(error="Missing 'text' in request body."), 400
+
+        out = assistant_graph.invoke(Command(resume=text), config=entry.thread_config)
+        snapshot = assistant_graph.get_state(entry.thread_config)
+
+        if "__interrupt__" in out and out["__interrupt__"]:
+            int_val = out["__interrupt__"][0].value
+            return jsonify({
+                "status": "in_progress",
+                "type": int_val.get("type"),
+                "message": int_val.get("message"),
+                "chips": int_val.get("chips", []),
+                "field": int_val.get("field"),
+                "retry": int_val.get("retry", False),
+            })
+        else:
+            rep = snapshot.values.get("report")
+            consent_given = snapshot.values.get("consent_given", False)
+            return jsonify({
+                "status": "complete" if rep else ("declined" if not consent_given else "ended"),
+                "consent_given": consent_given,
+                "report_ready": rep is not None,
+                "message": "Screening complete." if rep else "Session ended.",
+            })
+
+    @app.post("/api/session/<sid>/image")
+    def api_session_image(sid: str):
+        if assistant_graph is None:
+            return jsonify(error="Assistant unavailable."), 503
+        entry = session_mgr.get(sid)
+        if entry is None:
+            return jsonify(error="Session expired or not found. Please start a new session."), 404
+        if not session_mgr.check_rate(request.remote_addr):
+            return jsonify(error="Rate limit exceeded. Please wait a moment."), 429
+
+        file = request.files.get("image")
+        if file is None or file.filename == "":
+            return jsonify(error="Send an image in the 'image' form field."), 400
+
+        try:
+            img_bytes = file.read()
+            probe = Image.open(io.BytesIO(img_bytes))
+            if probe.format not in ALLOWED_FORMATS:
+                return jsonify(error="Only JPEG, PNG or WEBP images are accepted."), 415
+            probe.load()
+        except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
+            return jsonify(error="File is not a valid image."), 400
+
+        out = assistant_graph.invoke(Command(resume=img_bytes), config=entry.thread_config)
+        snapshot = assistant_graph.get_state(entry.thread_config)
+
+        if "__interrupt__" in out and out["__interrupt__"]:
+            int_val = out["__interrupt__"][0].value
+            return jsonify({
+                "status": "in_progress",
+                "type": int_val.get("type"),
+                "message": int_val.get("message"),
+                "retry": int_val.get("retry", False),
+            })
+        else:
+            rep = snapshot.values.get("report")
+            return jsonify({
+                "status": "complete" if rep else "ended",
+                "report_ready": rep is not None,
+                "final_risk": snapshot.values.get("final_risk"),
+            })
+
+    @app.get("/api/session/<sid>/report")
+    def api_session_report(sid: str):
+        if assistant_graph is None:
+            return jsonify(error="Assistant unavailable."), 503
+        entry = session_mgr.get(sid)
+        if entry is None:
+            return jsonify(error="Session expired or not found."), 404
+
+        snapshot = assistant_graph.get_state(entry.thread_config)
+        rep = snapshot.values.get("report")
+        if not rep:
+            return jsonify(error="Report is not ready yet."), 404
+
+        md = render_report_markdown(rep)
+        return jsonify({
+            "report": rep,
+            "markdown": md,
+            "html_url": f"/api/session/{sid}/report/html",
+        })
+
+    @app.get("/api/session/<sid>/report/html")
+    def api_session_report_html(sid: str):
+        if assistant_graph is None:
+            return jsonify(error="Assistant unavailable."), 503
+        entry = session_mgr.get(sid)
+        if entry is None:
+            return "Session expired or not found.", 404
+
+        snapshot = assistant_graph.get_state(entry.thread_config)
+        rep = snapshot.values.get("report")
+        if not rep:
+            return "Report is not ready yet.", 404
+
+        html_content = render_report_html(rep)
+        return html_content, 200, {"Content-Type": "text/html; charset=utf-8"}
 
     @app.errorhandler(413)
     def too_large(_):

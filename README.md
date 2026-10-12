@@ -19,6 +19,7 @@ A skin-lesion classifier for the seven diagnostic categories of the
 | Metrics | Accuracy | Accuracy, balanced accuracy, macro-F1, per-class report, melanoma recall, confusion matrix |
 | Serving | Raw `.save(file.filename)` upload, missing templates | In-memory image handling, format/size limits, tests, `/health` |
 | Agentic layer | – | LangGraph: quality check → classify → risk routing → explanation (Claude optional) |
+| Clinical Assistant | – | Conversational intake, deterministic red-flag detection, risk fusion (`max()`), verifiable clinical report generation, and session management (see [`SAFETY.md`](SAFETY.md)) |
 
 ## Setup
 
