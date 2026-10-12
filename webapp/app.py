@@ -19,7 +19,7 @@ from langgraph.types import Command
 from skinlesion.assistant.graph import build_assistant_graph
 from skinlesion.assistant.prompts import CONSENT_CHIPS, CONSENT_MESSAGE
 from skinlesion.assistant.render import render_report_html, render_report_markdown
-from skinlesion.assistant.sessions import SessionManager
+from skinlesion.assistant.sessions import SessionManager, start_sweeper
 from skinlesion.config import DISCLAIMER, PERFORMANCE_NOTE
 from skinlesion.info import CLASS_INFO, PRECAUTIONS
 from skinlesion.llm import build_chat_graph, get_llm, known_codes, make_explainer
@@ -196,9 +196,16 @@ def create_app(predict=None, model_path: str | None = None, llm=None,
     def api_session_create():
         if assistant_graph is None:
             return jsonify(error="Screening assistant unavailable (models not loaded)."), 503
-        entry = session_mgr.create(request.remote_addr)
+        entry, why = session_mgr.create_checked(request.remote_addr)
         if entry is None:
-            return jsonify(error="Too many active sessions or rate limit exceeded. Please wait a moment."), 429
+            if why == "rate_limited":
+                resp = jsonify(error="That was a lot of requests in a short time. Please wait about a minute and try again.",
+                               reason=why)
+                resp.headers["Retry-After"] = str(session_mgr.rate_window)
+            else:
+                resp = jsonify(error="Too many assessments are open from this connection. Close other assessment tabs, "
+                                     "or wait: unused sessions are removed automatically after 30 minutes.", reason=why)
+            return resp, 429
 
         out = assistant_graph.invoke({}, config=entry.thread_config)
         int_val = out["__interrupt__"][0].value if "__interrupt__" in out and out["__interrupt__"] else {}
@@ -208,6 +215,12 @@ def create_app(predict=None, model_path: str | None = None, llm=None,
             "message": int_val.get("message", CONSENT_MESSAGE),
             "chips": int_val.get("chips", CONSENT_CHIPS),
         })
+
+    @app.post("/api/session/<sid>/end")
+    def api_session_end(sid: str):
+        """End a session now (called when the page is closed or a new assessment is started) and delete its data."""
+        session_mgr.remove(sid)
+        return "", 204
 
     @app.post("/api/session/<sid>/message")
     def api_session_message(sid: str):
@@ -333,4 +346,6 @@ def create_app(predict=None, model_path: str | None = None, llm=None,
 
 
 if __name__ == "__main__":
-    create_app().run(host="127.0.0.1", port=5000, debug=False)
+    _app = create_app()
+    start_sweeper(_app.extensions["session_manager"])  # delete expired sessions on a timer, not only on requests
+    _app.run(host="127.0.0.1", port=5000, debug=False)

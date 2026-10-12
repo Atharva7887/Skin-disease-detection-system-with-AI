@@ -42,15 +42,18 @@ REPORT_SUMMARY_PROMPT = (
 )
 
 # Consent screen text (fixed, never LLM-generated).
+# NOTE: keep this accurate. In this version the assistant uses no LLM, so typed answers go nowhere but this
+# server. If an LLM (hosted or local) is ever wired into the assistant, this text must say so and name where
+# the typed answers are sent.
 CONSENT_MESSAGE = (
     "**Before we begin**\n\n"
     "This tool is a research prototype. It **cannot diagnose** skin cancer "
     "and is **not a substitute** for a medical professional.\n\n"
-    "• Your answers and image are processed in your browser session only "
-    "and are not stored.\n"
-    "• The image is analysed by an on-device AI model and is never sent "
-    "to external services.\n"
-    "• Session data is automatically deleted after 30 minutes.\n\n"
+    "• Your answers and photo are sent to this app's server and kept in its memory only while "
+    "you use it. They are not written to disk or logs.\n"
+    "• The photo is analysed by AI models running on that same server. In this version, nothing "
+    "you enter is sent to any other service.\n"
+    "• Your session is deleted automatically when you restart or leave, after about 10 minutes without activity, or after 30 minutes at most.\n\n"
     "Do you consent to proceed?"
 )
 

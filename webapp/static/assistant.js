@@ -89,7 +89,20 @@
     });
   }
 
+  // Tell the server to delete this session's data now instead of waiting for the 30-minute expiry. Without
+  // this, reloads and restarts leave sessions open and quickly hit the per-connection session limit.
+  function endSession() {
+    if (!sessionId) return;
+    const url = `/api/session/${sessionId}/end`;
+    try {
+      if (!(navigator.sendBeacon && navigator.sendBeacon(url))) fetch(url, { method: "POST", keepalive: true });
+    } catch (e) { /* best effort: the server also expires sessions on its own */ }
+    sessionId = null;
+  }
+  window.addEventListener("pagehide", endSession);
+
   async function initSession() {
+    endSession();
     chatHistory.innerHTML = "";
     activeChips.innerHTML = "";
     activeChips.hidden = true;

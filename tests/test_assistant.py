@@ -823,3 +823,95 @@ def test_blur_gate_is_resolution_independent():
     with Image.open("webapp/static/samples/sample1.jpg") as im:
         im = im.convert("RGB")
         assert _check_blur(im) == _check_blur(im.resize((im.width * 2, im.height * 2), Image.BICUBIC))
+
+
+def test_consent_text_is_accurate_about_where_data_goes():
+    text = CONSENT_MESSAGE.lower()
+    assert "browser session only" not in text and "on-device" not in text   # both were false: processing is server-side
+    assert "server" in text and "not written to disk" in text and "30 minutes" in text
+
+
+def test_sweeper_expires_sessions_without_any_further_request():
+    from skinlesion.assistant.sessions import start_sweeper
+    wiped = []
+    sm = SessionManager(ttl=0.05, on_expire=wiped.append)
+    entry = sm.create("9.9.9.9")
+    start_sweeper(sm, interval=0.05)
+    time.sleep(0.4)                      # no request arrives in the meantime
+    assert len(sm._sessions) == 0 and wiped == [entry.session_id]
+
+
+# ===========================================================================
+# 11. Session limits are usable: clear reasons, release on end/leave
+# ===========================================================================
+
+def test_create_checked_explains_why_it_refused():
+    sm = SessionManager(ttl=60, max_per_ip=1, rate_limit=(100, 60))
+    assert sm.create_checked("1.1.1.1")[1] is None
+    assert sm.create_checked("1.1.1.1") == (None, "too_many_sessions")
+    sm2 = SessionManager(ttl=60, max_per_ip=10, rate_limit=(2, 60))
+    sm2.create_checked("2.2.2.2"); sm2.create_checked("2.2.2.2")
+    assert sm2.create_checked("2.2.2.2") == (None, "rate_limited")
+
+
+def test_api_gives_different_messages_for_the_two_limits():
+    app = create_app(predict=make_fake_predict())
+    app.extensions["session_manager"].max_per_ip = 1
+    c = app.test_client()
+    assert c.post("/api/session").status_code == 200
+    r = c.post("/api/session")
+    assert r.status_code == 429 and r.get_json()["reason"] == "too_many_sessions"
+    assert "assessment" in r.get_json()["error"].lower()
+
+    app2 = create_app(predict=make_fake_predict())
+    app2.extensions["session_manager"].rate_count = 1
+    c2 = app2.test_client()
+    c2.post("/api/session")
+    r2 = c2.post("/api/session")
+    assert r2.status_code == 429 and r2.get_json()["reason"] == "rate_limited"
+    assert r2.headers["Retry-After"] == "60"
+
+
+def test_ending_a_session_frees_the_slot_and_deletes_the_data():
+    app = create_app(predict=make_fake_predict())
+    sm, graph = app.extensions["session_manager"], app.extensions["assistant_graph"]
+    sm.max_per_ip = 1
+    c = app.test_client()
+    sid = c.post("/api/session").get_json()["session_id"]
+    c.post(f"/api/session/{sid}/message", json={"text": "I understand, continue"})
+    config = sm.get(sid).thread_config
+    assert graph.get_state(config).values
+    assert c.post("/api/session").status_code == 429            # the slot is taken
+    assert c.post(f"/api/session/{sid}/end").status_code == 204
+    assert not graph.get_state(config).values                   # answers deleted
+    assert c.post(f"/api/session/{sid}/message", json={"text": "hi"}).status_code in (404, 410)
+    assert c.post("/api/session").status_code == 200            # slot is free again
+    assert c.post("/api/session/does-not-exist/end").status_code == 204  # idempotent, never an error
+
+
+def test_front_end_releases_sessions_when_restarting_or_leaving():
+    js = open("webapp/static/assistant.js", encoding="utf-8").read()
+    assert "sendBeacon" in js and "/end`" in js
+    assert 'addEventListener("pagehide", endSession)' in js
+    body = js.split("async function initSession()")[1].split("try {")[0]
+    assert "endSession()" in body, "starting a new assessment must end the previous session first"
+
+
+def test_idle_sessions_expire_but_active_ones_are_kept_alive():
+    wiped = []
+    sm = SessionManager(ttl=60, idle_ttl=0.2, on_expire=wiped.append)
+    idle, busy = sm.create("1.1.1.1"), sm.create("2.2.2.2")
+    for _ in range(4):                       # the busy session keeps making requests
+        time.sleep(0.1)
+        assert sm.get(busy.session_id) is not None
+    assert sm.get(idle.session_id) is None and wiped == [idle.session_id]
+    assert sm.get(busy.session_id) is not None
+
+
+def test_absolute_ttl_still_applies_to_an_active_session():
+    sm = SessionManager(ttl=0.3, idle_ttl=10)
+    entry = sm.create("3.3.3.3")
+    for _ in range(5):
+        time.sleep(0.1)
+        sm.get(entry.session_id)
+    assert sm.get(entry.session_id) is None
